@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+    <script>
+        async function getCoordinates(cityName) {
+            const url = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cityName)}&format=json`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    // Assuming the first result is the most relevant one
+                    const { lat, lon } = data[0];
+                    return { lat, lon };
+                } else {
+                    console.error('No results found');
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error fetching coordinates:', error);
+                return null;
+            }
+        }
+
+        async function getRainForecasts(lat, lon) {
+            const buienradarApiUrl = `https://graphdata.buienradar.nl/3.0/forecast/geo/RainHistoryForecast?lon=${lon}&lat=${lat}`;
+            const meteoplazaApiUrl = `http://cdn.buienalarm.nl/api/4.0/nowcast/timeseries/${lat}/${lon}/radar/forecast/7`;
+
+            try {
+                const buienradarResponse = await fetch(buienradarApiUrl);
+                const meteoplazaResponse = await fetch(meteoplazaApiUrl);
+
+                const buienradarData = await buienradarResponse.json();
+                const meteoplazaData = await meteoplazaResponse.json();
+
+                return { buienradar: buienradarData, meteoplaza: meteoplazaData };
+            } catch (error) {
+                console.error('Error fetching rain forecasts:', error);
+            }
+        }
+
+
+        async function compareRainForecasts() {
+            const cityInput = document.getElementById('cityInput');
+            const cityName = cityInput.value;
+
+            if (cityName) {
+                const coordinates = await getCoordinates(cityName);
+
+                if (coordinates) {
+                    const { lat, lon } = coordinates;
+                    const forecasts = await getRainForecasts(lat, lon);
+
+                    if (forecasts) {
+                        displayComparisonTable(forecasts);
+                    }
+                }
+            }
+        }
+
+        function displayComparisonTable(forecasts) {
+            const table = document.getElementById('comparisonTable');
+            table.innerHTML = '';
+
+            const headerRow = table.insertRow(0);
+            const buienradarHeader = headerRow.insertCell(0);
+            const meteoplazaHeader = headerRow.insertCell(1);
+
+            buienradarHeader.innerHTML = '<strong>Buienradar</strong>';
+            meteoplazaHeader.innerHTML = '<strong>Meteoplaza</strong>';
+
+            const buienradarForecasts = forecasts.buienradar.forecasts;
+            const meteoplazaData = forecasts.meteoplaza.data;
+
+            // Convert Meteoplaza data to a Map for easy access
+            const meteoplazaDataMap = new Map(meteoplazaData.map(item => [item.time, item]));
+
+            buienradarForecasts.forEach(buienradarItem => {
+                const row = table.insertRow();
+                const buienradarCell = row.insertCell(0);
+                const meteoplazaCell = row.insertCell(1);
+
+                const localBuienradarTime = convertUtcToLocalTime(buienradarItem.utcDateTime + 'Z');
+                buienradarCell.innerHTML = `${localBuienradarTime}: ${buienradarItem.dataValue} mm/h`;
+
+                // Convert and compare with Meteoplaza data
+                if (meteoplazaDataMap.has(buienradarItem.utcDateTime + 'Z')) {
+                    const meteoplazaItem = meteoplazaDataMap.get(buienradarItem.utcDateTime + 'Z');
+                    const localMeteoplazaTime = convertUtcToLocalTime(meteoplazaItem.time);
+                    meteoplazaCell.innerHTML = `${localMeteoplazaTime}: ${meteoplazaItem.precipitationrate} mm/h`;
+
+                    const difference = Math.abs(buienradarItem.dataValue - meteoplazaItem.precipitationrate);
+
+                    if (difference >= 0.1) {
+                        // Set background color based on difference
+                        row.style.backgroundColor = getBackgroundColorForDifference(difference);
+                    }
+                } else {
+                    meteoplazaCell.innerHTML = 'No data available';
+                }
+            });
+        }
+
+        function convertUtcToLocalTime(utcDateTime) {
+            const date = new Date(utcDateTime);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getBackgroundColorForDifference(difference) {
+            // Assuming the maximum difference is 1.0
+            const intensity = Math.min(difference / 1.0, 1); // Normalize the intensity between 0 and 1
+
+            // Calculate the alpha component based on the intensity
+            // Higher alpha (less transparency) for larger differences, lower alpha (more transparency) for smaller differences
+            const alphaValue = intensity; // Alpha value ranges from 0 (fully transparent) to 1 (fully opaque)
+
+            return `rgba(255, 0, 0, ${alphaValue})`; // Return the RGBA color string with constant red component and varying alpha
+        }
+        
+    </script>
+</head>
+<body>
+    <h1>Rain Forecast Comparison</h1>
+    <label for="cityInput">Enter City:</label>
+    <input type="text" id="cityInput" placeholder="Enter city name">
+    <button onclick="compareRainForecasts()">Get Rain Forecast</button>
+
+    <table id="comparisonTable"></table>
+</body>
+</html>
