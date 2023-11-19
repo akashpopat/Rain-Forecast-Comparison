@@ -47,7 +47,7 @@
 
         async function getRainForecasts(lat, lon) {
             const buienradarApiUrl = `https://graphdata.buienradar.nl/3.0/forecast/geo/RainHistoryForecast?lon=${lon}&lat=${lat}`;
-            const meteoplazaApiUrl = `http://cdn.buienalarm.nl/api/4.0/nowcast/timeseries/${lat}/${lon}/radar/forecast/7`;
+            const meteoplazaApiUrl = `https://cdn.buienalarm.nl/api/4.0/nowcast/timeseries/${lat}/${lon}/radar/forecast/7`;
 
             try {
                 const buienradarResponse = await fetch(buienradarApiUrl);
